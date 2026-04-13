@@ -394,10 +394,19 @@ body {
   min-height: calc(var(--bin-height, 180px) + 18px);
 }
 /* X-axis: node names below chart */
+.x-axis-caption {
+  margin-left: 46px;
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
 .x-axis {
   display: flex;
   gap: var(--bin-gap, 8px);
-  padding: 6px 10px 10px;
+  padding: 4px 10px 10px;
   margin-left: 46px;
   border-top: none;
   align-items: stretch;
@@ -532,30 +541,45 @@ body {
 /* ════════ TOOLTIP ════════ */
 .tooltip {
   display: none;
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
+}
+.chart-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
   background: rgba(60, 64, 67, 0.98);
   border: 1px solid var(--border-light);
   border-radius: 3px;
   padding: 8px 10px;
   font-size: 12px;
-  white-space: nowrap;
-  z-index: 20;
+  white-space: normal;
+  max-width: min(320px, calc(100vw - 24px));
+  z-index: 200;
+  opacity: 0;
   pointer-events: none;
+  visibility: hidden;
   box-shadow: 0 12px 24px rgba(0,0,0,0.3);
+  transition: opacity 0.12s ease;
 }
-.tooltip::after {
+.chart-tooltip::after {
   content: '';
   position: absolute;
   top: 100%;
-  left: 50%;
+  left: var(--tooltip-arrow-left, 50%);
   transform: translateX(-50%);
   border: 5px solid transparent;
   border-top-color: #3c4043;
 }
-.node-bin:hover .tooltip { display: block; }
+.chart-tooltip.visible {
+  opacity: 1;
+  visibility: visible;
+}
+.chart-tooltip.tooltip-below { bottom: auto; }
+.chart-tooltip.tooltip-below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #3c4043;
+}
 .tt-title {
   font-weight: 500;
   font-size: 12px;
@@ -570,7 +594,11 @@ body {
   line-height: 1.6;
 }
 .tt-lbl { color: var(--text-secondary); }
-.tt-val { font-family: 'Roboto Mono', monospace; font-weight: 500; }
+.tt-val {
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 500;
+  text-align: right;
+}
 
 /* ════════ DETAIL PANEL ════════ */
 .detail-panel {
@@ -751,6 +779,7 @@ footer a:hover { text-decoration: underline; }
   .k8s-card-body { padding: 0 14px 14px; }
   th, td { padding-left: 14px; padding-right: 14px; }
   .chart-legend,
+  .x-axis-caption,
   .x-axis {
     margin-left: 36px;
   }

@@ -4,6 +4,80 @@ import { renderBins, renderDetailPanel, renderSummary } from './render.js';
 import { state } from './state.js';
 import { groupByNodepool } from './utils.js';
 
+let activeTooltipBin = null;
+let floatingTooltip = null;
+
+function getFloatingTooltip() {
+  if (!floatingTooltip) {
+    floatingTooltip = document.createElement('div');
+    floatingTooltip.className = 'chart-tooltip';
+    document.body.appendChild(floatingTooltip);
+  }
+
+  return floatingTooltip;
+}
+
+function positionTooltip(bin) {
+  const tooltipTemplate = $('.tooltip', bin);
+  if (!tooltipTemplate) return;
+
+  const margin = 12;
+  const tooltip = getFloatingTooltip();
+  const maxWidth = Math.max(180, Math.min(320, window.innerWidth - (margin * 2)));
+
+  if (activeTooltipBin && activeTooltipBin !== bin) {
+    activeTooltipBin.classList.remove('tooltip-visible');
+  }
+
+  tooltip.innerHTML = tooltipTemplate.innerHTML;
+  tooltip.classList.add('visible');
+  tooltip.classList.remove('tooltip-below');
+  tooltip.style.maxWidth = `${maxWidth}px`;
+  bin.classList.add('tooltip-visible');
+
+  const binRect = bin.getBoundingClientRect();
+  const tipRect = tooltip.getBoundingClientRect();
+  const availableAbove = binRect.top - margin;
+  const availableBelow = window.innerHeight - binRect.bottom - margin;
+  const fitsAbove = availableAbove >= tipRect.height;
+  const fitsBelow = availableBelow >= tipRect.height;
+  const needsBelow = !fitsAbove && (fitsBelow || availableBelow > availableAbove);
+
+  const left = Math.max(
+    margin,
+    Math.min(
+      binRect.left + (binRect.width / 2) - (tipRect.width / 2),
+      window.innerWidth - tipRect.width - margin,
+    ),
+  );
+  let top = needsBelow
+    ? binRect.bottom + 10
+    : binRect.top - tipRect.height - 10;
+
+  top = Math.max(margin, Math.min(top, window.innerHeight - tipRect.height - margin));
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+  tooltip.style.setProperty(
+    '--tooltip-arrow-left',
+    `${Math.max(12, Math.min((binRect.left + (binRect.width / 2)) - left, tipRect.width - 12))}px`,
+  );
+  tooltip.classList.toggle('tooltip-below', needsBelow);
+  activeTooltipBin = bin;
+}
+
+function hideTooltip(bin) {
+  if (!bin) return;
+
+  bin.classList.remove('tooltip-visible');
+  if (activeTooltipBin === bin) {
+    const tooltip = getFloatingTooltip();
+    tooltip.classList.remove('visible', 'tooltip-below');
+    tooltip.style.removeProperty('--tooltip-arrow-left');
+    tooltip.innerHTML = '';
+    activeTooltipBin = null;
+  }
+}
+
 function closeDetail() {
   $$('.detail-panel.open').forEach(el => {
     el.classList.remove('open');
@@ -80,6 +154,7 @@ async function load() {
     const nodes = nodesResp.nodes || [];
     const groups = groupByNodepool(nodes);
 
+    if (activeTooltipBin) hideTooltip(activeTooltipBin);
     state.nodesData = nodes;
     app.innerHTML = renderSummary(summary) + renderBins(nodes);
     buildDropdown(groups);
@@ -159,6 +234,26 @@ document.addEventListener('click', async event => {
     await openNodeDetail(bin.dataset.node, bin.dataset.group, bin);
   }
 });
+
+document.addEventListener('mouseover', event => {
+  const bin = event.target.closest('.node-bin');
+  if (!bin || bin.contains(event.relatedTarget)) return;
+  positionTooltip(bin);
+});
+
+document.addEventListener('mouseout', event => {
+  const bin = event.target.closest('.node-bin');
+  if (!bin || bin.contains(event.relatedTarget)) return;
+  hideTooltip(bin);
+});
+
+window.addEventListener('resize', () => {
+  if (activeTooltipBin) positionTooltip(activeTooltipBin);
+});
+
+window.addEventListener('scroll', () => {
+  if (activeTooltipBin) positionTooltip(activeTooltipBin);
+}, true);
 
 load();
 setInterval(load, 30000);

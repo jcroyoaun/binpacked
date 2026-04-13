@@ -153,6 +153,7 @@ export function renderBins(nodes) {
               </div>
             </div>
           </div>
+          <div class="x-axis-caption">Nodes</div>
           <div class="x-axis" style="${styleStr(vars)}">
             ${poolNodes.map((node, i) => renderXAxisLabel(node.name, i)).join('')}
           </div>
