@@ -404,20 +404,11 @@ body {
 }
 .x-label {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
   text-align: center;
   width: var(--bin-width, 80px);
   flex: 0 0 auto;
-}
-.x-label-title {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1.1;
 }
 .x-label-id {
   display: block;

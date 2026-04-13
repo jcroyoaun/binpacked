@@ -1,5 +1,7 @@
 const NODEPOOL_LABELS = [
   'eks.amazonaws.com/nodegroup',
+  'karpenter.sh/nodepool',
+  'karpenter.sh/provisioner-name',
   'cloud.google.com/gke-nodepool',
   'kops.k8s.io/instancegroup',
   'node.kubernetes.io/nodepool',
@@ -60,21 +62,6 @@ export function fmtCPU(millicores) {
 export function fmtMem(bytes) {
   const gib = bytes / (1024 * 1024 * 1024);
   return gib >= 1 ? gib.toFixed(1) + ' GiB' : (bytes / (1024 * 1024)).toFixed(0) + ' MiB';
-}
-
-export function nodeDisplayId(name) {
-  const first = name.split('.')[0];
-  const ipMatch = first.match(/^ip-(\d+)-(\d+)-(\d+)-(\d+)$/);
-  if (ipMatch) return `${ipMatch[1]}.${ipMatch[2]}.${ipMatch[3]}.${ipMatch[4]}`;
-
-  const parts = first.split('-').filter(Boolean);
-  if (parts.length >= 2) {
-    const tail = parts[parts.length - 1];
-    if (/^[a-f0-9]+$/i.test(tail) && tail.length >= 6) return tail.slice(0, 8);
-    return parts.slice(-2).join('-').slice(0, 12);
-  }
-
-  return first.length > 12 ? `${first.slice(0, 6)}...${first.slice(-4)}` : first;
 }
 
 export function binSizeVars(count) {

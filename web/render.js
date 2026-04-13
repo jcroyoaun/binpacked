@@ -9,18 +9,15 @@ import {
   fmtPct,
   groupByNodepool,
   maxRatio,
-  nodeDisplayId,
   poolAgg,
   ratioColor,
   styleStr,
 } from './utils.js';
 
 function renderXAxisLabel(name, index) {
-  const label = String(index + 1).padStart(2, '0');
   return `
     <span class="x-label" title="${name}">
-      <span class="x-label-title">Node ${label}</span>
-      <span class="x-label-id">${nodeDisplayId(name)}</span>
+      <span class="x-label-id">${name}</span>
     </span>`;
 }
 
