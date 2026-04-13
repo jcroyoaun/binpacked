@@ -1,1 +1,22 @@
+# macOS
+.DS_Store
 
+# Local editor and agent state
+.claude/
+.idea/
+.vscode/
+
+# Go build outputs
+/bin/
+/dist/
+/coverage.out
+/cover.out
+*.coverprofile
+*.test
+
+# Local binaries
+/binpacked
+
+# Environment overrides
+.env
+.env.local

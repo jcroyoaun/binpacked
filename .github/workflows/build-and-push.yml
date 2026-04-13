@@ -1,0 +1,185 @@
+name: Binpacked CI and GHCR Publish
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/build-and-push.yml"
+      - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "main.go"
+      - "internal/**"
+      - "web/**"
+      - "deploy/quickstart.yaml"
+      - "scripts/update-image-reference.sh"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/build-and-push.yml"
+      - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "main.go"
+      - "internal/**"
+      - "web/**"
+      - "deploy/quickstart.yaml"
+      - "scripts/update-image-reference.sh"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional image tag override"
+        required: false
+        type: string
+
+concurrency:
+  group: binpacked-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_REGISTRY: ghcr.io
+  GHCR_NAMESPACE: ${{ vars.GHCR_NAMESPACE || github.repository_owner }}
+  IMAGE_NAME: binpacked
+  DOCKER_METADATA_SHORT_SHA_LENGTH: 12
+
+jobs:
+  go-unit-tests:
+    name: Go Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Run unit tests
+        run: go test ./...
+
+  docker-build-check:
+    name: Docker Build Validation
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate container build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: false
+          cache-from: type=gha,scope=binpacked
+          cache-to: type=gha,mode=max,scope=binpacked
+
+  publish-image:
+    name: Publish GHCR Image
+    needs:
+      - go-unit-tests
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Normalize package namespace
+        id: registry
+        env:
+          RAW_NAMESPACE: ${{ env.GHCR_NAMESPACE }}
+        run: |
+          echo "namespace=$(printf '%s' "${RAW_NAMESPACE}" | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_REGISTRY }}/${{ steps.registry.outputs.namespace }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=binpacked
+          cache-to: type=gha,mode=max,scope=binpacked
+
+  update-deployment-reference:
+    name: Pin Deployment Image
+    needs:
+      - publish-image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Normalize package namespace
+        id: registry
+        env:
+          RAW_NAMESPACE: ${{ env.GHCR_NAMESPACE }}
+        run: |
+          echo "namespace=$(printf '%s' "${RAW_NAMESPACE}" | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_OUTPUT}"
+
+      - name: Update Kubernetes image reference
+        env:
+          IMAGE_PREFIX: ${{ env.IMAGE_REGISTRY }}/${{ steps.registry.outputs.namespace }}
+        run: |
+          short_tag="sha-$(printf '%s' "${GITHUB_SHA}" | cut -c1-12)"
+          bash scripts/update-image-reference.sh "${short_tag}" "${IMAGE_PREFIX}"
+
+      - name: Commit updated image reference
+        run: |
+          if git diff --quiet -- deploy/quickstart.yaml; then
+            echo "No deployment image changes to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/quickstart.yaml
+          git commit -m "chore: pin binpacked image to sha-${GITHUB_SHA::12} [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
