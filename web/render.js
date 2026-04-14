@@ -133,6 +133,17 @@ export function renderBins(nodes) {
       </div>
       <div class="bins-area">
         <div class="bins-chart-area">
+          <div class="chart-legend" aria-label="Bar color legend">
+            <span class="chart-legend-label">Bar colors</span>
+            <span class="chart-legend-item cpu">
+              <span class="swatch" style="background:var(--cpu-color)"></span>
+              <span><strong>Green</strong> = CPU</span>
+            </span>
+            <span class="chart-legend-item mem">
+              <span class="swatch" style="background:var(--mem-color)"></span>
+              <span><strong>Blue</strong> = Memory</span>
+            </span>
+          </div>
           <div class="chart-body">
             <div class="y-axis" style="height:${binHeight + 18}px">
               <span class="y-tick">100%</span>
@@ -156,10 +167,6 @@ export function renderBins(nodes) {
           <div class="x-axis-caption">Nodes</div>
           <div class="x-axis" style="${styleStr(vars)}">
             ${poolNodes.map((node, i) => renderXAxisLabel(node.name, i)).join('')}
-          </div>
-          <div class="chart-legend">
-            <span><span class="swatch" style="background:var(--cpu-color)"></span> CPU</span>
-            <span><span class="swatch" style="background:var(--mem-color)"></span> Memory</span>
           </div>
         </div>
       </div>

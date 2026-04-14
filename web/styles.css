@@ -431,21 +431,47 @@ body {
   letter-spacing: 0.02em;
   line-height: 1.1;
 }
-/* Resource legend inline with chart */
+/* Resource legend above chart */
 .chart-legend {
   display: flex;
-  gap: 12px;
-  padding: 4px 10px 0;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 0 10px 10px;
   margin-left: 46px;
   font-size: 11px;
   color: var(--text-secondary);
   flex-wrap: wrap;
 }
-.chart-legend span { display: flex; align-items: center; gap: 4px; }
+.chart-legend-label {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+}
+.chart-legend-item strong {
+  font-weight: 600;
+}
+.chart-legend-item.cpu strong {
+  color: var(--cpu-color);
+}
+.chart-legend-item.mem strong {
+  color: var(--mem-color);
+}
 .chart-legend .swatch {
   width: 10px;
   height: 10px;
   border-radius: 2px;
+  flex-shrink: 0;
 }
 /* ════════ NODE BIN ════════ */
 .node-bin {
