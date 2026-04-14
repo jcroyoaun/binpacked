@@ -51,7 +51,7 @@ spec:
       serviceAccountName: binpacked
       containers:
         - name: binpacked
-          image: ghcr.io/jcroyoaun/binpacked:sha-3abc04937efa
+          image: ghcr.io/jcroyoaun/binpacked:sha-ed0cb86fec88
           ports:
             - containerPort: 8080
               name: http
