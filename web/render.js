@@ -1,8 +1,6 @@
 import {
-  DIST_COLORS,
   DIST_KEYS,
   DIST_LABELS,
-  DIST_TEXT,
   binSizeVars,
   fmtCPU,
   fmtMem,
@@ -14,9 +12,9 @@ import {
   styleStr,
 } from './utils.js';
 
-function renderXAxisLabel(name, index) {
+function renderXAxisLabel(name) {
   return `
-    <span class="x-label" title="${name}">
+    <span class="x-label" data-node-label="${name}" title="${name}">
       <span class="x-label-id">${name}</span>
     </span>`;
 }
@@ -41,13 +39,47 @@ function renderNodeBin(node, groupId, idx, showDetail) {
         ${node.bestEffortPodCount > 0 ? '<div class="tt-row"><span class="tt-lbl">BestEffort</span><span class="tt-val" style="color:var(--yellow)">'+node.bestEffortPodCount+'</span></div>' : ''}
         ${node.daemonSetPodCount > 0 ? '<div class="tt-row"><span class="tt-lbl">DaemonSet</span><span class="tt-val" style="color:var(--k8s-blue-light)">'+node.daemonSetPodCount+'</span></div>' : ''}
       </div>
+      <div class="bin-meta">
+        <div class="bin-pct" style="color:${color}">${fmtPct(dominant)}</div>
+        ${showDetail ? '<div class="bin-detail-line">'+fmtPct(node.cpu.requestRatio)+' / '+fmtPct(node.memory.requestRatio)+'</div>' : ''}
+        ${node.bestEffortPodCount > 0 ? '<span class="be-indicator">'+node.bestEffortPodCount+' BE</span>' : ''}
+      </div>
       <div class="bin-bars">
         <div class="bin-bar-track"><div class="bin-bar-fill cpu" style="height:${cpuPct}%;animation-delay:${delay}ms"></div></div>
         <div class="bin-bar-track"><div class="bin-bar-fill mem" style="height:${memPct}%;animation-delay:${delay+50}ms"></div></div>
       </div>
-      <div class="bin-pct" style="color:${color}">${fmtPct(dominant)}</div>
-      ${showDetail ? '<div class="bin-detail-line">'+fmtPct(node.cpu.requestRatio)+' / '+fmtPct(node.memory.requestRatio)+'</div>' : ''}
-      ${node.bestEffortPodCount > 0 ? '<span class="be-indicator">'+node.bestEffortPodCount+' BE</span>' : ''}
+    </div>`;
+}
+
+/* Pie-grid style donut meter, matching the K8s Dashboard "Allocation" card:
+   green Requests arc / orange Limits arc on a muted track, percent + series
+   name + "used / total" caption underneath. */
+function donutMeter(ratio, kind, label, subtext) {
+  const clamped = Math.max(0, Math.min(ratio, 1));
+  const circumference = 2 * Math.PI * 26;
+  const dash = (clamped * circumference).toFixed(2);
+  return `
+    <div class="alloc-meter">
+      <svg class="donut" viewBox="0 0 64 64" role="img" aria-label="${label} ${fmtPct(ratio)}">
+        <circle class="donut-track" cx="32" cy="32" r="26"></circle>
+        <circle class="donut-value ${kind}" cx="32" cy="32" r="26" stroke-dasharray="${dash} ${circumference.toFixed(2)}"></circle>
+      </svg>
+      <div class="alloc-pct">${fmtPct(ratio)}</div>
+      <div class="alloc-name">${label}</div>
+      <div class="alloc-sub">${subtext}</div>
+    </div>`;
+}
+
+function allocGroup(title, resource, fmt) {
+  const requestRatio = resource.requestRatio || 0;
+  const limitRatio = resource.allocatable > 0 ? resource.limits / resource.allocatable : 0;
+  return `
+    <div class="alloc-group">
+      <div class="alloc-group-title">${title}</div>
+      <div class="alloc-meters">
+        ${donutMeter(requestRatio, 'requests', 'Requests', fmt(resource.requested) + ' / ' + fmt(resource.allocatable))}
+        ${donutMeter(limitRatio, 'limits', 'Limits', fmt(resource.limits) + ' / ' + fmt(resource.allocatable))}
+      </div>
     </div>`;
 }
 
@@ -55,33 +87,31 @@ export function renderSummary(summary) {
   const total = summary.totalNodes || 1;
   return `
     <div class="k8s-card">
-      <div class="k8s-card-header">Cluster Overview</div>
+      <div class="k8s-card-header">Allocation</div>
       <div class="k8s-card-body">
-        <div class="summary-grid">
-          <div class="stat-box">
-            <div class="stat-label">Nodes</div>
-            <div class="stat-value">${summary.totalNodes}</div>
-            <div class="stat-detail">${summary.totalPods} pods running</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-label">CPU Packing</div>
-            <div class="stat-value" style="color:${ratioColor(summary.cpu.requestRatio)}">${fmtPct(summary.cpu.requestRatio)}</div>
-            <div class="stat-detail">${fmtCPU(summary.cpu.requested)} / ${fmtCPU(summary.cpu.allocatable)}</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-label">Memory Packing</div>
-            <div class="stat-value" style="color:${ratioColor(summary.memory.requestRatio)}">${fmtPct(summary.memory.requestRatio)}</div>
-            <div class="stat-detail">${fmtMem(summary.memory.requested)} / ${fmtMem(summary.memory.allocatable)}</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-label">Stranded CPU</div>
-            <div class="stat-value" style="color:var(--yellow)">${fmtCPU(summary.strandedResources.cpuMillicores)}</div>
-            <div class="stat-detail">Unrequested capacity</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-label">Stranded Memory</div>
-            <div class="stat-value" style="color:var(--yellow)">${fmtMem(summary.strandedResources.memoryBytes)}</div>
-            <div class="stat-detail">Unrequested capacity</div>
+        <div class="alloc-groups">
+          ${allocGroup('CPU', summary.cpu, fmtCPU)}
+          ${allocGroup('Memory', summary.memory, fmtMem)}
+          <div class="alloc-group">
+            <div class="alloc-group-title">Cluster</div>
+            <div class="cluster-stats">
+              <div class="c-stat">
+                <div class="c-stat-value">${summary.totalNodes}</div>
+                <div class="c-stat-label">Nodes</div>
+              </div>
+              <div class="c-stat">
+                <div class="c-stat-value">${summary.totalPods}</div>
+                <div class="c-stat-label">Running pods</div>
+              </div>
+              <div class="c-stat">
+                <div class="c-stat-value" style="color:var(--yellow)">${fmtCPU(summary.strandedResources.cpuMillicores)}</div>
+                <div class="c-stat-label">Stranded CPU</div>
+              </div>
+              <div class="c-stat">
+                <div class="c-stat-value" style="color:var(--yellow)">${fmtMem(summary.strandedResources.memoryBytes)}</div>
+                <div class="c-stat-label">Stranded memory</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -95,13 +125,13 @@ export function renderSummary(summary) {
             const count = summary.distribution[key] || 0;
             if (count === 0) return '';
             const pct = (count / total) * 100;
-            return '<div class="segment" style="flex:'+pct+';background:'+DIST_COLORS[i]+';color:'+DIST_TEXT[i]+'">'+count+'</div>';
+            return '<div class="segment seg-'+i+'" style="flex:'+pct+'">'+count+'</div>';
           }).join('')}
         </div>
         <div class="dist-legend">
           ${DIST_KEYS.map((key, i) => {
             const count = summary.distribution[key] || 0;
-            return '<span class="'+(count === 0 ? 'dim' : '')+'"><span class="dot" style="background:'+DIST_COLORS[i]+'"></span>'+DIST_LABELS[i]+'</span>';
+            return '<span class="'+(count === 0 ? 'dim' : '')+'"><span class="dot seg-'+i+'"></span>'+DIST_LABELS[i]+'</span>';
           }).join('')}
         </div>
       </div>
@@ -118,9 +148,13 @@ export function renderBins(nodes) {
     const vars = binSizeVars(poolNodes.length);
     const showDetail = poolNodes.length <= 12;
     const binHeight = parseInt(vars['--bin-height']) || 180;
+    const labelFont = parseInt(vars['--label-font']) || 10;
+    // Bottom-align the y-axis with the plot's baseline: offset by the x-axis
+    // label strip height (10px padding + one label line) minus half a tick.
+    const xAxisH = 10 + Math.ceil(labelFont * 1.2);
 
     html += `
-    <div class="k8s-card nodepool-group" data-pool="${poolName.toLowerCase()}">
+    <div class="k8s-card nodepool-group" data-pool="${poolName}">
       <div class="nodepool-header">
         <div class="nodepool-title-area">
           <span class="nodepool-name">${poolName}</span>
@@ -145,29 +179,31 @@ export function renderBins(nodes) {
             </span>
           </div>
           <div class="chart-body">
-            <div class="y-axis" style="height:${binHeight + 18}px">
+            <div class="y-axis" style="height:${binHeight + 11}px;margin-bottom:${xAxisH - 5.5}px">
               <span class="y-tick">100%</span>
               <span class="y-tick">75%</span>
               <span class="y-tick">50%</span>
               <span class="y-tick">25%</span>
               <span class="y-tick">0</span>
             </div>
-            <div class="chart-plot" style="${styleStr(vars)}">
-              <div class="plot-grid">
-                <div class="bins-row">
-                  ${poolNodes.map(node => {
-                    const out = renderNodeBin(node, gid, binIdx, showDetail);
-                    binIdx++;
-                    return out;
-                  }).join('')}
+            <div class="chart-scroll">
+              <div class="chart-plot" style="${styleStr(vars)}">
+                <div class="plot-grid">
+                  <div class="bins-row">
+                    ${poolNodes.map(node => {
+                      const out = renderNodeBin(node, gid, binIdx, showDetail);
+                      binIdx++;
+                      return out;
+                    }).join('')}
+                  </div>
+                </div>
+                <div class="x-axis">
+                  ${poolNodes.map(node => renderXAxisLabel(node.name)).join('')}
                 </div>
               </div>
             </div>
           </div>
           <div class="x-axis-caption">Nodes</div>
-          <div class="x-axis" style="${styleStr(vars)}">
-            ${poolNodes.map((node, i) => renderXAxisLabel(node.name, i)).join('')}
-          </div>
         </div>
       </div>
       <div class="detail-panel" id="detail-${gid}"></div>
@@ -186,10 +222,10 @@ export function renderDetailPanel(node, pods) {
     podRows = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:16px">No pods</td></tr>';
   } else {
     podRows = pods.map(pod => '<tr>'+
-      '<td style="font-family:Roboto Mono,monospace;font-size:12px">'+pod.name+(pod.isDaemonSet?'<span class="ds-badge">DS</span>':'')+'</td>'+
+      '<td>'+pod.name+(pod.isDaemonSet?'<span class="ds-badge">DS</span>':'')+'</td>'+
       '<td>'+pod.namespace+'</td>'+
-      '<td style="font-family:Roboto Mono,monospace">'+fmtCPU(pod.cpu.requested)+'</td>'+
-      '<td style="font-family:Roboto Mono,monospace">'+fmtMem(pod.memory.requested)+'</td>'+
+      '<td>'+fmtCPU(pod.cpu.requested)+'</td>'+
+      '<td>'+fmtMem(pod.memory.requested)+'</td>'+
       '<td><span class="qos qos-'+pod.qosClass.toLowerCase()+'">'+pod.qosClass+'</span></td>'+
       '</tr>').join('');
   }

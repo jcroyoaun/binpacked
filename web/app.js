@@ -92,10 +92,21 @@ function buildDropdown(groups) {
   const menu = $('#ng-menu');
   if (!menu) return;
 
-  state.ngVisible = new Set(groups.map(([name]) => name));
-  let html = '<div class="ng-item active" data-ng="__all"><div class="ng-check"></div><span class="ng-item-label" style="font-weight:500">All nodegroups</span></div><div class="ng-divider"></div>';
+  const names = groups.map(([name]) => name);
+  if (state.ngKnown) {
+    // Keep the user's filter across refreshes; pools appearing for the
+    // first time default to visible.
+    state.ngVisible = new Set(names.filter(name => state.ngVisible.has(name) || !state.ngKnown.has(name)));
+  } else {
+    state.ngVisible = new Set(names);
+  }
+  state.ngKnown = new Set(names);
+
+  const allActive = names.every(name => state.ngVisible.has(name));
+  let html = '<div class="ng-item'+(allActive ? ' active' : '')+'" data-ng="__all"><div class="ng-check"></div><span class="ng-item-label" style="font-weight:500">All node groups</span></div><div class="ng-divider"></div>';
   for (const [name, nodes] of groups) {
-    html += '<div class="ng-item active" data-ng="'+name+'"><div class="ng-check"></div><span class="ng-item-label">'+name+'</span><span class="ng-item-count">'+nodes.length+'</span></div>';
+    const active = state.ngVisible.has(name);
+    html += '<div class="ng-item'+(active ? ' active' : '')+'" data-ng="'+name+'"><div class="ng-check"></div><span class="ng-item-label">'+name+'</span><span class="ng-item-count">'+nodes.length+'</span></div>';
   }
   menu.innerHTML = html;
   updateNgCount();
@@ -110,8 +121,34 @@ function updateNgCount() {
 function applyFilter() {
   $$('.nodepool-group').forEach(group => {
     const pool = group.dataset.pool || '';
-    const match = [...state.ngVisible].some(value => value.toLowerCase() === pool);
-    group.classList.toggle('hidden', !match);
+    // Exact match: K8s label values are case-sensitive, so "Web" and "web"
+    // are distinct pools.
+    group.classList.toggle('hidden', !state.ngVisible.has(pool));
+  });
+}
+
+function buildNav(groups) {
+  const wrap = $('#nav-pools');
+  if (!wrap) return;
+
+  wrap.innerHTML = groups.map(([name, nodes]) =>
+    '<a class="nav-item nav-pool" href="#" data-pool-link="'+name+'">'+
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/></svg>'+
+      '<span class="nav-item-label" title="'+name+'">'+name+'</span>'+
+      '<span class="nav-item-count">'+nodes.length+'</span>'+
+    '</a>').join('');
+}
+
+function applySearch() {
+  const input = $('#node-search');
+  const query = (input && input.value ? input.value : '').trim().toLowerCase();
+  $$('.node-bin').forEach(bin => {
+    const name = (bin.dataset.node || '').toLowerCase();
+    bin.classList.toggle('search-dim', !!query && !name.includes(query));
+  });
+  $$('.x-label').forEach(label => {
+    const name = (label.dataset.nodeLabel || '').toLowerCase();
+    label.classList.toggle('search-dim', !!query && !name.includes(query));
   });
 }
 
@@ -143,13 +180,17 @@ async function openNodeDetail(nodeName, groupId, bin) {
   }
 }
 
+let loadSeq = 0;
+
 async function load() {
+  const seq = ++loadSeq;
   const app = $('#app');
   try {
     const [summary, nodesResp] = await Promise.all([
       fetchJSON('/api/v1/cluster-summary'),
       fetchJSON('/api/v1/nodes'),
     ]);
+    if (seq !== loadSeq) return; // superseded by a newer load
 
     const nodes = nodesResp.nodes || [];
     const groups = groupByNodepool(nodes);
@@ -158,8 +199,11 @@ async function load() {
     state.nodesData = nodes;
     app.innerHTML = renderSummary(summary) + renderBins(nodes);
     buildDropdown(groups);
+    buildNav(groups);
     applyFilter();
+    applySearch();
   } catch (err) {
+    if (seq !== loadSeq) return;
     app.innerHTML = '<div class="error">Failed to load cluster data: ' + err.message + '</div>';
   }
 }
@@ -168,6 +212,14 @@ document.addEventListener('click', async event => {
   const closeBtn = event.target.closest('[data-action="close-detail"]');
   if (closeBtn) {
     closeDetail();
+    return;
+  }
+
+  const poolLink = event.target.closest('[data-pool-link]');
+  if (poolLink) {
+    event.preventDefault();
+    const target = $$('.nodepool-group').find(group => group.dataset.pool === poolLink.dataset.poolLink);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
 
@@ -254,6 +306,30 @@ window.addEventListener('resize', () => {
 window.addEventListener('scroll', () => {
   if (activeTooltipBin) positionTooltip(activeTooltipBin);
 }, true);
+
+const themeToggle = $('#theme-toggle');
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('binpacked-theme', next); } catch (err) { /* storage unavailable */ }
+  });
+}
+
+const navToggle = $('#nav-toggle');
+if (navToggle) {
+  navToggle.addEventListener('click', () => document.body.classList.toggle('nav-hidden'));
+}
+
+const refreshBtn = $('#refresh-btn');
+if (refreshBtn) {
+  refreshBtn.addEventListener('click', () => load());
+}
+
+const searchInput = $('#node-search');
+if (searchInput) {
+  searchInput.addEventListener('input', applySearch);
+}
 
 load();
 setInterval(load, 30000);
