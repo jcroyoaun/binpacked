@@ -1,0 +1,57 @@
+# binpacked
+
+Kubernetes bin-packing and right-sizing analyzer. Reports how efficiently pod
+resource requests pack onto nodes, aggregates pods by owning workload, samples
+real usage from metrics-server when available, and produces actionable
+right-sizing recommendations for AI agents and humans.
+
+Units: CPU in millicores (1000m = 1 core), memory in bytes, ratios are 0-1
+fractions of allocatable capacity.
+
+## MCP (preferred for agents)
+
+Streamable HTTP MCP endpoint at /mcp on this same host/port.
+Connect from Claude Code: claude mcp add --transport http binpacked <base-url>/mcp
+
+Tools:
+- get_rightsizing_report {namespace?} — start here: per-container recommendations
+  (set/reduce/increase requests, limit fixes) with severity, rationale, estimated
+  savings, ready-to-run kubectl commands, plus per-pool node-shape analysis with
+  instance-type direction and Karpenter hints.
+- list_workloads {namespace?, kind?} — pods aggregated by owning workload with
+  per-container requests/limits and observed usage (avg/p95/max).
+- get_cluster_summary {} — cluster totals, packing distribution, stranded capacity.
+- list_nodes {nodepool?, sort?, order?} — per-node packing, bottleneck, labels.
+- get_node_pods {node} — pods on one node with requests/limits/QoS.
+- analyze_node_shapes {} — per-pool hardware shape vs requested shape, verdicts.
+
+The same binary serves MCP over stdio for local use: binpacked -mcp-stdio
+(claude mcp add --transport stdio binpacked -- binpacked -mcp-stdio -kubeconfig <path>)
+
+## JSON API
+
+- GET /api/v1/health
+- GET /api/v1/cluster-summary
+- GET /api/v1/nodes?nodepool=&sort=cpu_ratio|memory_ratio|pod_ratio|name&order=desc
+- GET /api/v1/nodes/{name}/pods
+- GET /api/v1/workloads?namespace=&kind=
+- GET /api/v1/rightsizing?namespace=      <- same content as get_rightsizing_report
+- GET /api/v1/node-shapes
+
+API handler errors return {"error": "<message>"} with a 4xx/5xx status.
+Unknown paths and wrong methods return plain-text 404/405 (Go ServeMux
+defaults) — check Content-Type before parsing JSON.
+
+## Notes for agents
+
+- Recommendations carry a "basis" field: "spec-only" findings need no usage
+  data; usage-based findings state their sampling window and sample count.
+  Sample counts grow after the server starts; trust windows >= 10 samples.
+- "action" fields contain kubectl commands that implement a suggestion; review
+  namespaces and values before running them.
+- estimatedSavings uses positive values for freed capacity, negative for
+  additional capacity required. Report totals keep the two directions
+  separate: totalPotentialSavings (only reductions) and
+  additionalCapacityNeeded (only corrective increases).
+- usage windows in "basis" strings are the actually observed per-pod span,
+  and usage-based rules stay silent until at least 5 minutes of observation.

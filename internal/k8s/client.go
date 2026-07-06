@@ -11,16 +11,12 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-// NewClientset creates a Kubernetes clientset. It tries in-cluster config first,
-// then falls back to the kubeconfig at the given path (or the default location).
-func NewClientset(kubeconfigPath string) (kubernetes.Interface, error) {
+// NewConfig builds a rest.Config. It tries in-cluster config first, then
+// falls back to the kubeconfig at the given path (or the default location).
+func NewConfig(kubeconfigPath string) (*rest.Config, error) {
 	cfg, err := rest.InClusterConfig()
 	if err == nil {
-		cs, err := kubernetes.NewForConfig(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("creating in-cluster clientset: %w", err)
-		}
-		return cs, nil
+		return cfg, nil
 	}
 
 	if kubeconfigPath == "" {
@@ -35,10 +31,14 @@ func NewClientset(kubeconfigPath string) (kubernetes.Interface, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building kubeconfig from %s: %w", kubeconfigPath, err)
 	}
+	return cfg, nil
+}
 
+// NewClientset creates a Kubernetes clientset from the given rest.Config.
+func NewClientset(cfg *rest.Config) (kubernetes.Interface, error) {
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("creating clientset from kubeconfig: %w", err)
+		return nil, fmt.Errorf("creating clientset: %w", err)
 	}
 	return cs, nil
 }

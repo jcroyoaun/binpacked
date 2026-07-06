@@ -14,10 +14,12 @@ import (
 )
 
 type stubComputer struct {
-	nodes    []packing.NodePacking
-	pods     []packing.PodInfo
-	nodesErr error
-	podsErr  error
+	nodes        []packing.NodePacking
+	pods         []packing.PodInfo
+	workloads    []packing.WorkloadPacking
+	nodesErr     error
+	podsErr      error
+	workloadsErr error
 }
 
 func (s stubComputer) ComputeNodePacking() ([]packing.NodePacking, error) {
@@ -32,6 +34,13 @@ func (s stubComputer) PodsOnNode(nodeName string) ([]packing.PodInfo, error) {
 		return nil, s.podsErr
 	}
 	return s.pods, nil
+}
+
+func (s stubComputer) ComputeWorkloads() ([]packing.WorkloadPacking, error) {
+	if s.workloadsErr != nil {
+		return nil, s.workloadsErr
+	}
+	return s.workloads, nil
 }
 
 type failingWriter struct {

@@ -13,6 +13,9 @@ import (
 type Computer struct {
 	NodeLister corelisters.NodeLister
 	PodLister  corelisters.PodLister
+	// Usage optionally supplies observed usage from the metrics API; nil
+	// disables usage-based fields and recommendations.
+	Usage UsageProvider
 }
 
 // ComputeNodePacking computes packing data for all nodes.
